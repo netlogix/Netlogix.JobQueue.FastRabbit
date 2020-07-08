@@ -49,6 +49,9 @@ class SupervisorCommandController extends \Neos\Flow\Cli\CommandController
     public function createConfigCommand(): void
     {
         $pathPrefix = FLOW_PATH_DATA . '../Configuration/Supervisor/';
+        foreach (glob($pathPrefix . 'program-*.conf') as $configFile) {
+            unlink($configFile);
+        }
 
         $factory = new ConfigurationFactory();
 
