@@ -8,31 +8,10 @@ Netlogix:
 
         numberOfWorkers: 4
 
-        supervisorTemplate: |
-          [supervisorctl]
-          serverurl=unix://%FLOW_PATH_TEMPORARY%__JOB_NAME__/supervisor.sock
-
-          [supervisord]
-          logfile=%FLOW_PATH_DATA%Logs/__CONTEXT__.log
-          pidfile=%FLOW_PATH_DATA%Logs/__CONTEXT__.pid
-          nodaemon=false
-          minfds=1024
-          minprocs=200
-          umask=022
-          strip_ansi=false
-
-          [rpcinterface:supervisor]
-          supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
-
-          [include]
-          files=group.conf program*.conf
-
-
         groupTemplate: |
           [group:backend-services-__CONTEXT__-consumer]
           programs=__PROGRAMS__
           priority=100
-
 
         programTemplate: |
           [program:__JOB_NAME__]
