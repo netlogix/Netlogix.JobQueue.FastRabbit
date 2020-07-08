@@ -17,9 +17,10 @@ $queueOptions = $queueSettings['options'];
 $command = $config['command'];
 
 $queue = new RabbitQueue($queueName, $queueOptions);
-
 $messageCache = \Netlogix\JobQueue\FastRabbit\Cache\CacheFactory::get($config);
-$worker = new \Netlogix\JobQueue\FastRabbit\Worker($command, $queue, $queueSettings, $messageCache);
+$lock = new \Netlogix\JobQueue\FastRabbit\Lock($config['numberOfWorkers'], $config['temporaryDirectoryBase']);
+
+$worker = new \Netlogix\JobQueue\FastRabbit\Worker($command, $queue, $queueSettings, $messageCache, $lock);
 $loop = new \Netlogix\JobQueue\FastRabbit\Loop($queue);
 
 $loop->runMessagesOnWorker($worker);

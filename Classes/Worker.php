@@ -34,16 +34,23 @@ final class Worker
      */
     protected $output;
 
+    /**
+     * @var Lock
+     */
+    private $lock;
+
     public function __construct(
         string $command,
         RabbitQueue $queue,
         array $queueSettings,
-        FrontendInterface $messageCache
+        FrontendInterface $messageCache,
+        Lock $lock
     ) {
         $this->command = $command;
         $this->queue = $queue;
         $this->queueSettings = $queueSettings;
         $this->messageCache = $messageCache;
+        $this->lock = $lock;
     }
 
     public function prepare()
@@ -57,8 +64,15 @@ final class Worker
         $messageCacheIdentifier = sha1(serialize($message));
         $this->messageCache->set($messageCacheIdentifier, $message);
 
-        exec($this->command . ' --messageCacheIdentifier=' . escapeshellarg($messageCacheIdentifier), $commandOutput,
-            $result);
+        $this->lock->run(function() use (&$messageCacheIdentifier, &$commandOutput, &$result) {
+            exec(
+                $this->command . ' --messageCacheIdentifier=' . escapeshellarg($messageCacheIdentifier),
+                $commandOutput,
+                $result
+            );
+        });
+        $this->outputLine('Memory 1: %s', memory_get_peak_usage(false));
+        $this->outputLine('Memory 2: %s', memory_get_peak_usage(true));
 
         if ($result === 0) {
             $this->queue->finish($message->getIdentifier());

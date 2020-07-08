@@ -89,6 +89,10 @@ class SupervisorCommandController extends \Neos\Flow\Cli\CommandController
             ),
             'queueName' => $queue,
             'temporaryDirectoryBase' => FLOW_PATH_TEMPORARY_BASE,
+            'numberOfWorkers' => $this->configurationManager->getConfiguration(
+                ConfigurationManager::CONFIGURATION_TYPE_SETTINGS,
+                'Netlogix.JobQueue.FastRabbit.supervisor.numberOfWorkers'
+            ),
             'applicationIdentifier' => $this->configurationManager->getConfiguration(
                 ConfigurationManager::CONFIGURATION_TYPE_SETTINGS,
                 'Neos.Flow.cache.applicationIdentifier'

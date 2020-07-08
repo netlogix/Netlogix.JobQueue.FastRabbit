@@ -6,6 +6,7 @@ Netlogix:
 
         contextName: '%FLOW_PATH_ROOT%'
 
+        numberOfWorkers: 4
 
         supervisorTemplate: |
           [supervisorctl]
