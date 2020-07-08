@@ -36,7 +36,7 @@ Netlogix:
 
         programTemplate: |
           [program:__JOB_NAME__]
-          command=bash -c "sleep 5 && exec ./flow supervisor:forkworker --queue '__CLASS__' | ./bin/fast-rabbit"
+          command=bash -c "sleep 5 && ./flow supervisor:forkworker --queue '__CLASS__' > %FLOW_PATH_TEMPORARY%/__JOB_NAME__.json && exec ./bin/fast-rabbit < %FLOW_PATH_TEMPORARY%/__JOB_NAME__.json"
           stdout_logfile=AUTO
           stderr_logfile=AUTO
           process_name=%(program_name)s_%(process_num)02d
