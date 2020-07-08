@@ -1,0 +1,52 @@
+Netlogix:
+  JobQueue:
+    FastRabbit:
+
+      supervisor:
+
+        contextName: '%FLOW_PATH_ROOT%'
+
+
+        supervisorTemplate: |
+          [supervisorctl]
+          serverurl=unix://%FLOW_PATH_TEMPORARY%__JOB_NAME__/supervisor.sock
+
+          [supervisord]
+          logfile=%FLOW_PATH_DATA%Logs/__CONTEXT__.log
+          pidfile=%FLOW_PATH_DATA%Logs/__CONTEXT__.pid
+          nodaemon=false
+          minfds=1024
+          minprocs=200
+          umask=022
+          strip_ansi=false
+
+          [rpcinterface:supervisor]
+          supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
+
+          [include]
+          files=group.conf program*.conf
+
+
+        groupTemplate: |
+          [group:backend-services-__CONTEXT__-consumer]
+          programs=__PROGRAMS__
+          priority=100
+
+
+        programTemplate: |
+          [program:__JOB_NAME__]
+          command=bash -c "sleep 5 && exec ./flow supervisor:forkworker --queue '__CLASS__' | ./bin/fast-rabbit"
+          stdout_logfile=AUTO
+          stderr_logfile=AUTO
+          process_name=%(program_name)s_%(process_num)02d
+          numprocs=1
+          autostart=true
+          autorestart=true
+          startsecs=35
+          startretries=25
+          stopsignal=TERM
+          stopwaitsecs=10
+          user=www-data
+          environment=FLOW_CONTEXT=%env:FLOW_CONTEXT%
+          directory=%FLOW_PATH_ROOT%
+
