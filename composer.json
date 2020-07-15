@@ -1,6 +1,6 @@
 {
     "name": "netlogix/jobqueue-fast-rabbit",
-    "description": "Low memory footprint worker wor RabbitMQ jobs",
+    "description": "Low memory footprint worker for RabbitMQ jobs",
     "license": "MIT",
     "type": "neos-package",
     "require": {
