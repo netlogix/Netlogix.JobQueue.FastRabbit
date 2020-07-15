@@ -8,10 +8,10 @@ Netlogix:
 
         workerPool:
           numberOfWorkers: 16
-          lockFileDirectory: /tmp
+          lockFileDirectory: /tmp/fast-rabbit
 
         groupTemplate: |
-          [group:backend-services-__CONTEXT__-consumer]
+          [group:backend-services-__CONTEXT__-consumers]
           programs=__PROGRAMS__
           priority=100
 
@@ -32,3 +32,10 @@ Netlogix:
           environment=FLOW_CONTEXT='%env:FLOW_CONTEXT%'
           directory=%FLOW_PATH_ROOT%
 
+#Flowpack:
+#  JobQueue:
+#    Common:
+#      queues:
+#        'some-queue-name':
+#          className: t3n\JobQueue\RabbitMQ\Queue\RabbitQueue
+#          generateSupervisorConfigForFastRabbit: true
