@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 namespace Netlogix\JobQueue\FastRabbit\Job;
 
-use Neos\EventSourcing\EventListener\EventListenerInterface;
 use Neos\Flow\Annotations as Flow;
 
 class ConfigurationFactory
@@ -31,36 +30,32 @@ class ConfigurationFactory
      */
     protected $groupTemplate;
 
-    public function getShortNameForListenerClassName(string $eventListenerClassName): string
+    public function getShortNameForQueueName(string $queueName): string
     {
-        return preg_replace('%[^a-z0-9]%iUm', '-', strtolower($eventListenerClassName));
+        return preg_replace('%[^a-z0-9]%iUm', '-', strtolower($queueName));
     }
 
-    public function getJobNameForListenerClassName(string $eventListenerClassName): string
+    public function getJobNameForQueueName(string $queueName): string
     {
-        if (!is_a($eventListenerClassName, EventListenerInterface::class, true)) {
-            throw new \RuntimeException(sprintf('Class %s is no EventListenerInterface', $eventListenerClassName),
-                1594646124);
-        }
-        return $this->getContextName() . '-' . $this->getShortNameForListenerClassName($eventListenerClassName);
+        return $this->getContextName() . '-' . $this->getShortNameForQueueName($queueName);
     }
 
-    public function buildJobConfigurationForListenerClassName(string $eventListenerClassName): string
+    public function buildJobConfigurationForQueue(string $queueName): string
     {
-        $jobName = $this->getJobNameForListenerClassName($eventListenerClassName);
+        $jobName = $this->getJobNameForQueueName($queueName);
 
         $config = $this->programTemplate;
-        $config = str_replace(self::__CONFIG_FILE__, $this->getJobConfigurationFile($eventListenerClassName), $config);
-        $config = str_replace(self::__CLASS__, $eventListenerClassName, $config);
+        $config = str_replace(self::__CONFIG_FILE__, $this->getJobConfigurationFile($queueName), $config);
+        $config = str_replace(self::__CLASS__, $queueName, $config);
         $config = str_replace(self::__JOB_NAME__, $jobName, $config);
         $config = str_replace(self::__CONTEXT__, $this->contextName, $config);
 
         return $config;
     }
 
-    public function buildGroupConfigurationForListenerClassnames(string ...$listenerClassNames): string
+    public function buildGroupConfigurationForQueues(string ...$queueNames): string
     {
-        $jobNames = array_map([$this, 'getJobNameForListenerClassName'], $listenerClassNames);
+        $jobNames = array_map([$this, 'getJobNameForQueueName'], $queueNames);
 
         $programs = $this->groupTemplate;
         $programs = str_replace('__PROGRAMS__', join(',', $jobNames), $programs);
@@ -69,19 +64,19 @@ class ConfigurationFactory
         return $programs;
     }
 
-    public function getJobConfigurationFile(string $eventListenerClassName): string
+    public function getJobConfigurationFile(string $queueName): string
     {
-        return $this->getJobFilePath($eventListenerClassName, 'json');
+        return $this->getJobFilePath($queueName, 'json');
     }
 
-    public function getJobSupervisorFile(string $eventListenerClassName): string
+    public function getJobSupervisorFile(string $queueName): string
     {
-        return $this->getJobFilePath($eventListenerClassName, 'conf');
+        return $this->getJobFilePath($queueName, 'conf');
     }
 
-    protected function getJobFilePath(string $eventListenerClassName, string $suffix): string
+    protected function getJobFilePath(string $queueName, string $suffix): string
     {
-        $jobName = $this->getJobNameForListenerClassName($eventListenerClassName);
+        $jobName = $this->getJobNameForQueueName($queueName);
         $pathPrefix = rtrim(FLOW_PATH_CONFIGURATION, '/') . '/Supervisor/';
         return sprintf($pathPrefix . 'program-%s.%s', $jobName, $suffix);
     }

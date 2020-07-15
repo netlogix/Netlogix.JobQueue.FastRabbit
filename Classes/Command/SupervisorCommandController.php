@@ -4,7 +4,6 @@ declare(strict_types=1);
 namespace Netlogix\JobQueue\FastRabbit\Command;
 
 use Flowpack\JobQueue\Common\Queue\QueueManager;
-use Neos\EventSourcing\EventListener\EventListenerInterface;
 use Neos\Flow\Annotations as Flow;
 use Neos\Flow\Configuration\ConfigurationManager;
 use Neos\Flow\Configuration\Exception\InvalidConfigurationTypeException;
@@ -12,6 +11,7 @@ use Neos\Flow\Core\Booting\Scripts;
 use Neos\Flow\ObjectManagement\ObjectManagerInterface;
 use Neos\Flow\Reflection\ReflectionService;
 use Netlogix\JobQueue\FastRabbit\Job\ConfigurationFactory;
+use Netlogix\JobQueue\FastRabbit\Queues\Locator;
 
 class SupervisorCommandController extends \Neos\Flow\Cli\CommandController
 {
@@ -37,20 +37,27 @@ class SupervisorCommandController extends \Neos\Flow\Cli\CommandController
      * @Flow\CompileStatic
      * @return array
      */
-    public static function collectEventListenerClassNames(
+    public static function collectQueueNames(
         ObjectManagerInterface $objectManager
     ): array {
         $reflectionService = $objectManager->get(ReflectionService::class);
-        return $reflectionService->getAllImplementationClassNamesForInterface(EventListenerInterface::class);
+        $locatorNames = $reflectionService->getAllImplementationClassNamesForInterface(Locator::class);
+        $queues = [];
+        foreach ($locatorNames as $locatorName) {
+            $locator = $objectManager->get($locatorName);
+            assert($locator instanceof Locator);
+            $queues = array_merge($queues, iterator_to_array($locator, true));
+        }
+        return $queues;
     }
 
     public function createCommand(): void
     {
         $this->createSupervisorGroupConfigCommand();
-        $eventListenerClassNames = self::collectEventListenerClassNames($this->objectManager);
-        foreach ($eventListenerClassNames as $eventListenerClassName) {
-            $this->createSupervisorProcessConfigCommand($eventListenerClassName);
-            $this->createWorkerConfigCommand($eventListenerClassName);
+        $queueNames = self::collectQueueNames($this->objectManager);
+        foreach ($queueNames as $queueName) {
+            $this->createSupervisorProcessConfigCommand($queueName);
+            $this->createWorkerConfigCommand($queueName);
         }
     }
 
@@ -66,9 +73,9 @@ class SupervisorCommandController extends \Neos\Flow\Cli\CommandController
 
         $factory = new ConfigurationFactory();
 
-        $eventListenerClassNames = self::collectEventListenerClassNames($this->objectManager);
+        $queueNames = self::collectQueueNames($this->objectManager);
 
-        $groupConfiguration = $factory->buildGroupConfigurationForListenerClassnames(... $eventListenerClassNames);
+        $groupConfiguration = $factory->buildGroupConfigurationForQueues(... $queueNames);
         $groupFilePath = $pathPrefix . 'group.conf';
         file_put_contents($groupFilePath, $groupConfiguration);
     }
@@ -79,7 +86,7 @@ class SupervisorCommandController extends \Neos\Flow\Cli\CommandController
     public function createSupervisorProcessConfigCommand(string $queueName): void
     {
         $factory = new ConfigurationFactory();
-        $jobConfiguration = $factory->buildJobConfigurationForListenerClassName($queueName);
+        $jobConfiguration = $factory->buildJobConfigurationForQueue($queueName);
 
         $jobFilePath = $factory->getJobSupervisorFile($queueName);
         file_put_contents($jobFilePath, $jobConfiguration);
