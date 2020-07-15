@@ -66,7 +66,7 @@ class SupervisorCommandController extends \Neos\Flow\Cli\CommandController
      */
     public function createSupervisorGroupConfigCommand(): void
     {
-        $pathPrefix = FLOW_PATH_DATA . '../Configuration/Supervisor/';
+        $pathPrefix = FLOW_PATH_CONFIGURATION . 'Supervisor/';
         foreach (glob($pathPrefix . 'program-*.conf') as $configFile) {
             unlink($configFile);
         }
