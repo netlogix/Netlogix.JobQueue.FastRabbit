@@ -4,17 +4,32 @@ Netlogix:
 
       supervisor:
 
+        # Should be different for every flow app on one Rabbit
         contextName: '%FLOW_PATH_ROOT%'
 
         workerPool:
+          # Supervisor will start a single low memory consumer for every queue but consumers will only spawn high
+          # memory flow apps when worker slots are available
           numberOfWorkers: 16
+          # Slot names are deterministic. Pointing multiple flow apps to a shared lock directory will cap the total
+          # number of high memory worker processes for the whole group.
           lockFileDirectory: /tmp/fast-rabbit
 
+        # All workers will be placed in a common supervisord group.
+        # Available placeholders:
+        #  __CONTEXT__  The value of the Netlogix.JobQueue.FastRabbit.supervisor.contextName setting
+        #  __PROGRAMS__  List of all jobs created according to queue configuration.
         groupTemplate: |
           [group:backend-services-__CONTEXT__-consumers]
           programs=__PROGRAMS__
           priority=100
 
+        # Every queue gets its own program.
+        # Available placeholders:
+        #  __CONTEXT__      The value of the Netlogix.JobQueue.FastRabbit.supervisor.contextName setting
+        #  __QUEUE_NAME__   Name of the queue defined in Flowpack.JobQueue.common.queues
+        #  __JOB_NAME__     A deterministic name based on __CONTEXT__ and __QUEUE_NAME__; cleand up to comply with Rabbit naming scheme
+        #  __CONFIG_FILE__  Absolute file path to the JSON config file for the queue
         programTemplate: |
           [program:__JOB_NAME__]
           command=bash -c "sleep 5 && exec ./bin/fast-rabbit < __CONFIG_FILE__"

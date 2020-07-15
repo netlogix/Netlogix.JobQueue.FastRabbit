@@ -8,7 +8,7 @@ use Neos\Flow\Annotations as Flow;
 class ConfigurationFactory
 {
     const __CONFIG_FILE__ = '__CONFIG_FILE__';
-    const __CLASS__ = '__CLASS__';
+    const __QUEUE_NAME__ = '__QUEUE_NAME__';
     const __JOB_NAME__ = '__JOB_NAME__';
     const __CONTEXT__ = '__CONTEXT__';
 
@@ -46,7 +46,7 @@ class ConfigurationFactory
 
         $config = $this->programTemplate;
         $config = str_replace(self::__CONFIG_FILE__, $this->getJobConfigurationFile($queueName), $config);
-        $config = str_replace(self::__CLASS__, $queueName, $config);
+        $config = str_replace(self::__QUEUE_NAME__, $queueName, $config);
         $config = str_replace(self::__JOB_NAME__, $jobName, $config);
         $config = str_replace(self::__CONTEXT__, $this->contextName, $config);
 
