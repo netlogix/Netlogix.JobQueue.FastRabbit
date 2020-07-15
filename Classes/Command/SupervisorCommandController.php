@@ -7,6 +7,7 @@ use Flowpack\JobQueue\Common\Queue\QueueManager;
 use Neos\Flow\Annotations as Flow;
 use Neos\Flow\Configuration\ConfigurationManager;
 use Neos\Flow\Configuration\Exception\InvalidConfigurationTypeException;
+use Neos\Flow\Configuration\Exception\SchemaValidationException;
 use Neos\Flow\Core\Booting\Scripts;
 use Neos\Flow\ObjectManagement\ObjectManagerInterface;
 use Neos\Flow\Reflection\ReflectionService;
@@ -42,13 +43,21 @@ class SupervisorCommandController extends \Neos\Flow\Cli\CommandController
     ): array {
         $reflectionService = $objectManager->get(ReflectionService::class);
         $locatorNames = $reflectionService->getAllImplementationClassNamesForInterface(Locator::class);
-        $queues = [];
+        $queueNames = [];
         foreach ($locatorNames as $locatorName) {
             $locator = $objectManager->get($locatorName);
             assert($locator instanceof Locator);
-            $queues = array_merge($queues, iterator_to_array($locator, true));
+            foreach ($locator as $queueName) {
+                if (in_array($queueName, $queueNames)) {
+                    throw new SchemaValidationException(
+                        sprintf('Duplicate supervisor config found for queue "%s".', $queueName),
+                        1594829585
+                    );
+                }
+                $queueNames[$queueName] = $queueName;
+            }
         }
-        return $queues;
+        return array_values($queueNames);
     }
 
     public function createCommand(): void
