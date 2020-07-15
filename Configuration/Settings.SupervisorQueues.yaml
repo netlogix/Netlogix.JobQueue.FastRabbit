@@ -6,7 +6,9 @@ Netlogix:
 
         contextName: '%FLOW_PATH_ROOT%'
 
-        numberOfWorkers: 4
+        workerPool:
+          numberOfWorkers: 16
+          lockFileDirectory: /tmp
 
         groupTemplate: |
           [group:backend-services-__CONTEXT__-consumer]
@@ -15,7 +17,7 @@ Netlogix:
 
         programTemplate: |
           [program:__JOB_NAME__]
-          command=bash -c "sleep 5 && ./flow supervisor:forkworker --queue '__CLASS__' > %FLOW_PATH_TEMPORARY%/__JOB_NAME__.json && exec ./bin/fast-rabbit < %FLOW_PATH_TEMPORARY%/__JOB_NAME__.json"
+          command=bash -c "sleep 5 && exec ./bin/fast-rabbit < __CONFIG_FILE__"
           stdout_logfile=AUTO
           stderr_logfile=AUTO
           process_name=%(program_name)s_%(process_num)02d
@@ -27,6 +29,6 @@ Netlogix:
           stopsignal=TERM
           stopwaitsecs=10
           user=www-data
-          environment=FLOW_CONTEXT=%env:FLOW_CONTEXT%
+          environment=FLOW_CONTEXT='%env:FLOW_CONTEXT%'
           directory=%FLOW_PATH_ROOT%
 

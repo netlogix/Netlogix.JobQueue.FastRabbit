@@ -71,8 +71,6 @@ final class Worker
                 $result
             );
         });
-        $this->outputLine('Memory 1: %s', memory_get_peak_usage(false));
-        $this->outputLine('Memory 2: %s', memory_get_peak_usage(true));
 
         if ($result === 0) {
             $this->queue->finish($message->getIdentifier());
