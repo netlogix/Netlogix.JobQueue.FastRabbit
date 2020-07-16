@@ -48,7 +48,7 @@ class SupervisorCommandController extends \Neos\Flow\Cli\CommandController
             $locator = $objectManager->get($locatorName);
             assert($locator instanceof Locator);
             foreach ($locator as $queueName) {
-                if (in_array($queueName, $queueNames)) {
+                if (in_array($queueName, $queueNames, true)) {
                     throw new SchemaValidationException(
                         sprintf('Duplicate supervisor config found for queue "%s".', $queueName),
                         1594829585
