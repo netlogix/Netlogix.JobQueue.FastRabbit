@@ -45,7 +45,7 @@ class SupervisorCommandController extends \Neos\Flow\Cli\CommandController
         $locatorNames = $reflectionService->getAllImplementationClassNamesForInterface(Locator::class);
         $queueNames = [];
         foreach ($locatorNames as $locatorName) {
-            $locator = $objectManager->get($locatorName);
+            $locator = new $locatorName();
             assert($locator instanceof Locator);
             foreach ($locator as $queueName) {
                 if (in_array($queueName, $queueNames, true)) {
