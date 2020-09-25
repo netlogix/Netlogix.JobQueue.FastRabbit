@@ -36,34 +36,21 @@ class SupervisorCommandController extends \Neos\Flow\Cli\CommandController
 
     /**
      * @Flow\CompileStatic
+     * @param ObjectManagerInterface $objectManager
      * @return array
      */
-    public static function collectQueueNames(
+    public static function collectLocatorNames(
         ObjectManagerInterface $objectManager
     ): array {
         $reflectionService = $objectManager->get(ReflectionService::class);
         $locatorNames = $reflectionService->getAllImplementationClassNamesForInterface(Locator::class);
-        $queueNames = [];
-        foreach ($locatorNames as $locatorName) {
-            $locator = new $locatorName();
-            assert($locator instanceof Locator);
-            foreach ($locator as $queueName) {
-                if (in_array($queueName, $queueNames, true)) {
-                    throw new SchemaValidationException(
-                        sprintf('Duplicate supervisor config found for queue "%s".', $queueName),
-                        1594829585
-                    );
-                }
-                $queueNames[$queueName] = $queueName;
-            }
-        }
-        return array_values($queueNames);
+        return array_values($locatorNames);
     }
 
     public function createCommand(): void
     {
         $this->createSupervisorGroupConfigCommand();
-        $queueNames = self::collectQueueNames($this->objectManager);
+        $queueNames = $this->collectQueueNames();
         foreach ($queueNames as $queueName) {
             $this->createSupervisorProcessConfigCommand($queueName);
             $this->createWorkerConfigCommand($queueName);
@@ -145,5 +132,29 @@ class SupervisorCommandController extends \Neos\Flow\Cli\CommandController
         $factory = new ConfigurationFactory();
         $jobFilePath = $factory->getJobConfigurationFile($queueName);
         file_put_contents($jobFilePath, json_encode($jobConfig, JSON_PRETTY_PRINT));
+    }
+
+    /**
+     * @return string[]
+     * @throws SchemaValidationException
+     */
+    protected function collectQueueNames(): array
+    {
+        $locatorNames = self::collectLocatorNames($this->objectManager);
+        $queueNames = [];
+        foreach ($locatorNames as $locatorName) {
+            $locator = $this->objectManager->get($locatorName);
+            assert($locator instanceof Locator);
+            foreach ($locator as $queueName) {
+                if (in_array($queueName, $queueNames, true)) {
+                    throw new SchemaValidationException(
+                        sprintf('Duplicate supervisor config found for queue "%s".', $queueName),
+                        1594829585
+                    );
+                }
+                $queueNames[$queueName] = $queueName;
+            }
+        }
+        return array_values($queueNames);
     }
 }
