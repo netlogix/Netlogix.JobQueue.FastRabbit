@@ -11,6 +11,7 @@ use Neos\Flow\Configuration\Exception\SchemaValidationException;
 use Neos\Flow\Core\Booting\Scripts;
 use Neos\Flow\ObjectManagement\ObjectManagerInterface;
 use Neos\Flow\Reflection\ReflectionService;
+use Neos\Utility\Files;
 use Netlogix\JobQueue\FastRabbit\Job\ConfigurationFactory;
 use Netlogix\JobQueue\FastRabbit\Queues\Locator;
 
@@ -63,6 +64,7 @@ class SupervisorCommandController extends \Neos\Flow\Cli\CommandController
     public function createSupervisorGroupConfigCommand(): void
     {
         $pathPrefix = FLOW_PATH_CONFIGURATION . 'Supervisor/';
+        Files::createDirectoryRecursively($pathPrefix);
         foreach (glob($pathPrefix . 'program-*.conf') as $configFile) {
             unlink($configFile);
         }
