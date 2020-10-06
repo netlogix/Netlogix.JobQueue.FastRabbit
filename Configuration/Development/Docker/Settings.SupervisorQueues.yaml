@@ -1,0 +1,30 @@
+Netlogix:
+  JobQueue:
+    FastRabbit:
+
+      supervisor:
+
+        # Every queue gets its own program.
+        # Available placeholders:
+        #  __CONTEXT__      The value of the Netlogix.JobQueue.FastRabbit.supervisor.contextName setting
+        #  __QUEUE_NAME__   Name of the queue defined in Flowpack.JobQueue.common.queues
+        #  __JOB_NAME__     A deterministic name based on __CONTEXT__ and __QUEUE_NAME__; cleand up to comply with Rabbit naming scheme
+        #  __CONFIG_FILE__  Absolute file path to the JSON config file for the queue
+        programTemplate: |
+          [program:__JOB_NAME__]
+          command=bash -c "sleep 5 && exec ./bin/fast-rabbit < __CONFIG_FILE__"
+          stdout_logfile = /dev/stdout
+          stdout_logfile_maxbytes = 0
+          stderr_logfile = /dev/stderr
+          stderr_logfile_maxbytes = 0
+          process_name=%(program_name)s_%(process_num)02d
+          numprocs=1
+          autostart=true
+          autorestart=true
+          startsecs=35
+          startretries=25
+          stopsignal=TERM
+          stopwaitsecs=10
+          user=www-data
+          environment=FLOW_CONTEXT='%env:FLOW_CONTEXT%'
+          directory=%FLOW_PATH_ROOT%
