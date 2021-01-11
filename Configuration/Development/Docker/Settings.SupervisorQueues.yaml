@@ -18,7 +18,7 @@ Netlogix:
           stderr_logfile = /dev/stderr
           stderr_logfile_maxbytes = 0
           process_name=%(program_name)s_%(process_num)02d
-          numprocs=1
+          numprocs=__NUMPROCS__
           autostart=true
           autorestart=true
           startsecs=35

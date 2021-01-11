@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace Netlogix\JobQueue\FastRabbit\Job;
 
+use Flowpack\JobQueue\Common\Queue\QueueManager;
 use Neos\Flow\Annotations as Flow;
 
 class ConfigurationFactory
@@ -11,6 +12,7 @@ class ConfigurationFactory
     const __QUEUE_NAME__ = '__QUEUE_NAME__';
     const __JOB_NAME__ = '__JOB_NAME__';
     const __CONTEXT__ = '__CONTEXT__';
+    const __NUMPROCS__ = '__NUMPROCS__';
 
     /**
      * @var string
@@ -30,6 +32,12 @@ class ConfigurationFactory
      */
     protected $groupTemplate;
 
+    /**
+     * @var QueueManager
+     * @Flow\Inject
+     */
+    protected $queueManager;
+
     public function getShortNameForQueueName(string $queueName): string
     {
         return preg_replace('%[^a-z0-9]%iUm', '-', strtolower($queueName));
@@ -43,12 +51,16 @@ class ConfigurationFactory
     public function buildJobConfigurationForQueue(string $queueName): string
     {
         $jobName = $this->getJobNameForQueueName($queueName);
+        $queueSettings = $this->queueManager->getQueueSettings($queueName);
+        $fastRabbitSettings = $queueSettings['fastRabbit'] ?? [];
+        $numProcs = (int)($fastRabbitSettings['numProcs'] ?? 1);
 
         $config = $this->programTemplate;
         $config = str_replace(self::__CONFIG_FILE__, $this->getJobConfigurationFile($queueName), $config);
         $config = str_replace(self::__QUEUE_NAME__, $queueName, $config);
         $config = str_replace(self::__JOB_NAME__, $jobName, $config);
         $config = str_replace(self::__CONTEXT__, $this->contextName, $config);
+        $config = str_replace(self::__NUMPROCS__, $numProcs, $config);
 
         return $config;
     }

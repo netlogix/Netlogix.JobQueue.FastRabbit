@@ -36,7 +36,7 @@ Netlogix:
           stdout_logfile=AUTO
           stderr_logfile=AUTO
           process_name=%(program_name)s_%(process_num)02d
-          numprocs=1
+          numprocs=__NUMPROCS__
           autostart=true
           autorestart=true
           startsecs=35
@@ -54,3 +54,6 @@ Netlogix:
 #        'some-queue-name':
 #          className: t3n\JobQueue\RabbitMQ\Queue\RabbitQueue
 #          generateSupervisorConfigForFastRabbit: true
+#
+#          fastRabbit:
+#            numProcs: 2
