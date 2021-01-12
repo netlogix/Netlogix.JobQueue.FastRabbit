@@ -25,6 +25,6 @@ $messageCache = CacheFactory::get($config);
 $lock = new Lock($config['workerPool']['numberOfWorkers'], $config['workerPool']['lockFileDirectory']);
 
 $worker = new Worker($command, $queue, $queueSettings, $messageCache, $lock);
-$loop = new Loop($queue);
+$loop = new Loop($queue, 600);
 
 $loop->runMessagesOnWorker($worker);
