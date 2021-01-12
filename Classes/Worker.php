@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace Netlogix\JobQueue\FastRabbit;
 
+use Flowpack\JobQueue\Common\Job\JobManager;
 use Flowpack\JobQueue\Common\Queue\Message;
 use Neos\Cache\Frontend\FrontendInterface;
 use Neos\Flow\Annotations as Flow;
@@ -23,6 +24,11 @@ final class Worker
      * @var RabbitQueue
      */
     protected $queue;
+
+    /**
+     * @var array
+     */
+    protected $queueSettings;
 
     /**
      * @var FrontendInterface
