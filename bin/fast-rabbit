@@ -1,6 +1,10 @@
 #!/usr/bin/env php
 <?php
 
+use Netlogix\JobQueue\FastRabbit\Cache\CacheFactory;
+use Netlogix\JobQueue\FastRabbit\Lock;
+use Netlogix\JobQueue\FastRabbit\Loop;
+use Netlogix\JobQueue\FastRabbit\Worker;
 use t3n\JobQueue\RabbitMQ\Queue\RabbitQueue;
 
 require_once __DIR__ . '/../src/autoload.php';
@@ -17,10 +21,10 @@ $queueOptions = $queueSettings['options'];
 $command = $config['command'];
 
 $queue = new RabbitQueue($queueName, $queueOptions);
-$messageCache = \Netlogix\JobQueue\FastRabbit\Cache\CacheFactory::get($config);
-$lock = new \Netlogix\JobQueue\FastRabbit\Lock($config['workerPool']['numberOfWorkers'], $config['workerPool']['lockFileDirectory']);
+$messageCache = CacheFactory::get($config);
+$lock = new Lock($config['workerPool']['numberOfWorkers'], $config['workerPool']['lockFileDirectory']);
 
-$worker = new \Netlogix\JobQueue\FastRabbit\Worker($command, $queue, $queueSettings, $messageCache, $lock);
-$loop = new \Netlogix\JobQueue\FastRabbit\Loop($queue);
+$worker = new Worker($command, $queue, $queueSettings, $messageCache, $lock);
+$loop = new Loop($queue);
 
 $loop->runMessagesOnWorker($worker);
