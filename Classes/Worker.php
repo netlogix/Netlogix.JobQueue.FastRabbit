@@ -102,7 +102,7 @@ final class Worker
                     $message->getNumberOfReleases() + 1,
                     $maximumNumberOfReleases + 1
                 );
-                $this->outputLine('Message: %s', join('', $commandOutput));
+                $this->outputLine('<error>Message: %s</error>', join('', $commandOutput));
 
             } else {
                 $this->queue->abort($message->getIdentifier());
