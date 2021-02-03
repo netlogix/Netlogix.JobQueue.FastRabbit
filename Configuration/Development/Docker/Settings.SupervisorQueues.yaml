@@ -25,6 +25,5 @@ Netlogix:
           startretries=25
           stopsignal=TERM
           stopwaitsecs=10
-          user=www-data
           environment=FLOW_CONTEXT='%env:FLOW_CONTEXT%'
           directory=%FLOW_PATH_ROOT%
