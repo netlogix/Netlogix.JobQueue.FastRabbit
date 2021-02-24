@@ -27,4 +27,3 @@ Netlogix:
           stopwaitsecs=10
           environment=FLOW_CONTEXT='%env:FLOW_CONTEXT%'
           directory=%FLOW_PATH_ROOT%
-          user=www-data
