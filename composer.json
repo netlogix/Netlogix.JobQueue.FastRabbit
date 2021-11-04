@@ -4,10 +4,11 @@
     "license": "MIT",
     "type": "neos-package",
     "require": {
-        "t3n/jobqueue-rabbitmq": "^2.3.0",
+        "ext-json": "*",
         "flowpack/jobqueue-common": "^3.0.0",
+        "netlogix/supervisor": "@dev",
         "php-amqplib/php-amqplib": "^2.11",
-        "ext-json": "*"
+        "t3n/jobqueue-rabbitmq": "^2.3.0"
     },
     "autoload": {
         "psr-4": {

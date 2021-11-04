@@ -5,7 +5,7 @@ Netlogix:
       supervisor:
 
         # Should be different for every flow app on one Rabbit
-        contextName: '%FLOW_PATH_ROOT%'
+        applicationName: '%FLOW_PATH_ROOT%'
 
         workerPool:
           # Supervisor will start a single low memory consumer for every queue but consumers will only spawn high
@@ -16,36 +16,33 @@ Netlogix:
           lockFileDirectory: /tmp/fast-rabbit
 
         # All workers will be placed in a common supervisord group.
+        # Groups get created on demand.
+        # For explicit groups: See Netlogix.Supervisor.groups
+        #
         # Available placeholders:
-        #  __CONTEXT__  The value of the Netlogix.JobQueue.FastRabbit.supervisor.contextName setting
-        #  __PROGRAMS__  List of all jobs created according to queue configuration.
-        groupTemplate: |
-          [group:backend-services-__CONTEXT__-consumers]
-          programs=__PROGRAMS__
-          priority=100
+        #  __APPLICATION_NAME__  The value of the Netlogix.JobQueue.FastRabbit.supervisor.applicationName setting
+        groupName: 'default'
 
         # Every queue gets its own program.
+        #
         # Available placeholders:
-        #  __CONTEXT__      The value of the Netlogix.JobQueue.FastRabbit.supervisor.contextName setting
-        #  __QUEUE_NAME__   Name of the queue defined in Flowpack.JobQueue.common.queues
-        #  __JOB_NAME__     A deterministic name based on __CONTEXT__ and __QUEUE_NAME__; cleand up to comply with Rabbit naming scheme
-        #  __CONFIG_FILE__  Absolute file path to the JSON config file for the queue
-        programTemplate: |
-          [program:__JOB_NAME__]
-          command=bash -c "sleep 5 && exec ./bin/fast-rabbit < __CONFIG_FILE__"
-          stdout_logfile=AUTO
-          stderr_logfile=AUTO
-          process_name=%(program_name)s_%(process_num)02d
-          numprocs=__NUMPROCS__
-          autostart=true
-          autorestart=true
-          startsecs=35
-          startretries=25
-          stopsignal=TERM
-          stopwaitsecs=10
-          user=www-data
-          environment=FLOW_CONTEXT='%env:FLOW_CONTEXT%'
-          directory=%FLOW_PATH_ROOT%
+        #  __APPLICATION_NAME__   The value of the Netlogix.JobQueue.FastRabbit.supervisor.applicationName setting
+        #  __QUEUE_NAME__         Name of the queue defined in Flowpack.JobQueue.common.queues
+        #  __JOB_NAME__           A deterministic name based on __APPLICATION_NAME__ and __QUEUE_NAME__, cleand up to comply with Rabbit naming scheme
+        #  __CONFIG_FILE__        Absolute file path to the JSON config file for the queue
+        #  __NUMPROCS__           Number of parallel processes for a particular listener, defined by Flowpack.JobQueue.common.queues.__QUEUE_NAME__.fastRabbit.numProcs
+        program:
+          command: 'bash -c "sleep 5 && exec ./bin/fast-rabbit < __CONFIG_FILE__"'
+          process_name: '%(program_name)s_%(process_num)02d'
+          numprocs: '__NUMPROCS__'
+          startsecs: 35
+          startretries: 25
+          user: 'www-data'
+
+  Supervisor:
+
+    providers:
+      FastRabbit: \Netlogix\JobQueue\FastRabbit\Supervisor\Provider
 
 #Flowpack:
 #  JobQueue:

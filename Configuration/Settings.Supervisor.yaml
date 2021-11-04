@@ -1,0 +1,5 @@
+Netlogix:
+  Supervisor:
+
+    providers:
+      FastRabbit: \Netlogix\JobQueue\FastRabbit\Supervisor\Provider
