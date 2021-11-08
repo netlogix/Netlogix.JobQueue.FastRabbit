@@ -39,11 +39,6 @@ Netlogix:
           startretries: 25
           user: 'www-data'
 
-  Supervisor:
-
-    providers:
-      FastRabbit: \Netlogix\JobQueue\FastRabbit\Supervisor\Provider
-
 #Flowpack:
 #  JobQueue:
 #    Common:
