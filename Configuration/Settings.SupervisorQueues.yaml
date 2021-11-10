@@ -35,6 +35,8 @@ Netlogix:
           command: 'bash -c "sleep 5 && exec ./bin/fast-rabbit < __CONFIG_FILE__"'
           process_name: '%(program_name)s_%(process_num)02d'
           numprocs: '__NUMPROCS__'
+          autostart: true
+          autorestart: true
           startsecs: 35
           startretries: 25
           user: 'www-data'
