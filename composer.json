@@ -1,18 +1,23 @@
 {
     "name": "netlogix/jobqueue-fast-rabbit",
+    "type": "neos-package",
     "description": "Low memory footprint worker for RabbitMQ jobs",
     "license": "MIT",
-    "type": "neos-package",
-    "require": {
-        "ext-json": "*",
-        "flowpack/jobqueue-common": "^3.0.0",
-        "netlogix/supervisor": "@dev",
-        "php-amqplib/php-amqplib": "^2.11",
-        "t3n/jobqueue-rabbitmq": "^2.3.0"
-    },
     "autoload": {
         "psr-4": {
             "Netlogix\\JobQueue\\FastRabbit\\": "Classes/"
+        }
+    },
+    "require": {
+        "ext-json": "*",
+        "flowpack/jobqueue-common": "^3.0.0",
+        "netlogix/supervisor": "^1.0",
+        "php-amqplib/php-amqplib": "^2.11",
+        "t3n/jobqueue-rabbitmq": "^2.3.0"
+    },
+    "extra": {
+        "neos": {
+            "package-key": "Netlogix.JobQueue.FastRabbit"
         }
     },
     "bin": [
