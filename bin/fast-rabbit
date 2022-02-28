@@ -20,7 +20,12 @@ $queueSettings = $config['queueSettings'];
 $queueOptions = $queueSettings['options'];
 $command = $config['command'];
 
-$queue = new RabbitQueue($queueName, $queueOptions);
+$queueClassName = $queueSettings['className'] ?? RabbitQueue::class;
+if (!is_a($queueClassName, RabbitQueue::class, true)) {
+    throw new RuntimeException(sprintf('Queue "%s" must be a type of RabbitQueue!', $queueName), 1646058608);
+}
+
+$queue = new $queueClassName($queueName, $queueOptions);
 $messageCache = CacheFactory::get($config);
 $lock = new Lock($config['workerPool']['numberOfWorkers'], $config['workerPool']['lockFileDirectory']);
 
