@@ -30,6 +30,11 @@ class Lock
         }
     }
 
+    /**
+     * @template T
+     * @param callable(): T $run
+     * @return T
+     */
     public function run(callable $run)
     {
         $this->findSlot();
