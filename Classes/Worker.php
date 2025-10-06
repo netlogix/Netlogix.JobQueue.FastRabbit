@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Netlogix\JobQueue\FastRabbit;
@@ -6,114 +7,91 @@ namespace Netlogix\JobQueue\FastRabbit;
 use Flowpack\JobQueue\Common\Job\JobManager;
 use Flowpack\JobQueue\Common\Queue\Message;
 use Neos\Cache\Frontend\FrontendInterface;
-use Neos\Flow\Annotations as Flow;
 use Neos\Flow\Cli\ConsoleOutput;
+use Symfony\Component\Process\InputStream;
+use Symfony\Component\Process\Process;
 use t3n\JobQueue\RabbitMQ\Queue\RabbitQueue;
 
-/**
- * @Flow\Proxy(false)
- */
+use function array_shift;
+
 final class Worker
 {
-    /**
-     * @var string
-     */
-    protected $command;
+    protected readonly ConsoleOutput $output;
 
     /**
-     * @var RabbitQueue
+     * @var array{input: InputStream, process: Process}[]
      */
-    protected $queue;
+    private array $pool = [];
 
     /**
-     * @var array
+     * A pool size of 1 means one standby while 1 is working.
      */
-    protected $queueSettings;
-
-    /**
-     * @var FrontendInterface
-     */
-    protected $messageCache;
-
-    /**
-     * @var ConsoleOutput
-     */
-    protected $output;
-
-    /**
-     * @var Lock
-     */
-    private $lock;
+    protected int $poolSize = 1;
 
     public function __construct(
-        string $command,
-        RabbitQueue $queue,
-        array $queueSettings,
-        FrontendInterface $messageCache,
-        Lock $lock
+        protected readonly string $command,
+        protected readonly RabbitQueue $queue,
+        protected readonly array $queueSettings,
+        protected readonly FrontendInterface $messageCache,
+        protected readonly Lock $lock
     ) {
-        $this->command = $command;
-        $this->queue = $queue;
-        $this->queueSettings = $queueSettings;
-        $this->messageCache = $messageCache;
-        $this->lock = $lock;
     }
 
-    public function prepare()
+    public function prepare(): void
     {
+        $this->cleanPool();
+
         $this->output = new ConsoleOutput();
-        $this->outputLine('Watching queue <b>"%s"</b>', $this->queue->getName());
+        $this->output->outputLine('Watching queue <b>"%s"</b>', [$this->queue->getName()]);
     }
 
-    public function executeMessage(Message $message)
+    public function executeMessage(Message $message): void
     {
         $messageCacheIdentifier = sha1(serialize($message));
         $this->messageCache->set($messageCacheIdentifier, $message);
 
-        $this->lock->run(function() use (&$messageCacheIdentifier, &$commandOutput, &$result) {
-            exec(
-                $this->command . ' --messageCacheIdentifier=' . escapeshellarg($messageCacheIdentifier),
-                $commandOutput,
-                $result
-            );
-        });
+        $process = $this->lock->run(
+            fn () => $this->runFromPool($messageCacheIdentifier)
+        );
 
-        if ($result === 0) {
+        if ($process->getExitCode() === 0) {
             $this->queue->finish($message->getIdentifier());
-            $this->outputLine(
-                '<success>Successfully executed job "%s" (%s)</success>',
-                $message->getIdentifier(),
-                join('', $commandOutput)
+            $this->output->outputLine(
+                '<success>Successfully executed job "%s"</success>',
+                [$message->getIdentifier()]
             );
-
+            $this->output->outputLine('Output: %s', [$process->getOutput()]);
         } else {
             $maximumNumberOfReleases = isset($this->queueSettings['maximumNumberOfReleases'])
-                ? (int)$this->queueSettings['maximumNumberOfReleases']
+                ? (int) $this->queueSettings['maximumNumberOfReleases']
                 : JobManager::DEFAULT_MAXIMUM_NUMBER_RELEASES;
 
             if ($message->getNumberOfReleases() < $maximumNumberOfReleases) {
                 $releaseOptions = isset($this->queueSettings['releaseOptions']) ? $this->queueSettings['releaseOptions'] : [];
                 $this->queue->release($message->getIdentifier(), $releaseOptions);
                 $this->queue->reQueueMessage($message, $releaseOptions);
-                $this->outputLine(
-                    'Job execution for job (message: "%s", queue: "%s") failed (%d/%d trials) - RELEASE',
-                    $message->getIdentifier(),
-                    $this->queue->getName(),
-                    $message->getNumberOfReleases() + 1,
-                    $maximumNumberOfReleases + 1
+                $this->output->outputLine('Output: %s', [$process->getOutput()]);
+                $this->output->outputLine(
+                    '<error>Job execution for job (message: "%s", queue: "%s") failed (%d/%d trials) - RELEASE</error>',
+                    [
+                        $message->getIdentifier(),
+                        $this->queue->getName(),
+                        $message->getNumberOfReleases() + 1,
+                        $maximumNumberOfReleases + 1,
+                    ]
                 );
-                $this->outputLine('<error>Message: %s</error>', join('', $commandOutput));
-
             } else {
                 $this->queue->abort($message->getIdentifier());
-                $this->outputLine(
-                    'Job execution for job (message: "%s", queue: "%s") failed (%d/%d trials) - ABORTING',
-                    $message->getIdentifier(),
-                    $this->queue->getName(),
-                    $message->getNumberOfReleases() + 1,
-                    $maximumNumberOfReleases + 1
+                $this->output->outputLine('Output: %s', [$process->getOutput()]);
+                $this->output->outputLine(
+                    '<error>Job execution for job (message: "%s", queue: "%s") failed (%d/%d trials) - ABORTING</error>',
+                    [
+                        $message->getIdentifier(),
+                        $this->queue->getName(),
+                        $message->getNumberOfReleases() + 1,
+                        $maximumNumberOfReleases + 1,
+                    ]
                 );
-                $this->outputLine('<error>Message: %s</error>', join('', $commandOutput));
             }
         }
 
@@ -122,8 +100,44 @@ final class Worker
         }
     }
 
-    protected function outputLine(string $text, ...$arguments)
+    /**
+     * @return array{input: InputStream, process: Process}
+     */
+    private function createProcess(): array
     {
-        $this->output->outputLine($text, $arguments);
+        $input = new InputStream();
+        $process = Process::fromShellCommandline(
+            command: $this->command,
+            input: $input,
+            timeout: 0
+        );
+        $process->start();
+        return ['input' => $input, 'process' => $process];
+    }
+
+    private function runFromPool(string $messageCacheIdentifier): Process
+    {
+        $this->cleanPool();
+        ['input' => $input, 'process' => $process] = array_shift($this->pool);
+        $this->pool[] = $this->createProcess();
+
+        assert($input instanceof InputStream);
+        assert($process instanceof Process);
+
+        $input->write($messageCacheIdentifier . PHP_EOL);
+
+        $process->wait();
+        return $process;
+    }
+
+    private function cleanPool(): void
+    {
+        $this->pool = array_filter(
+            $this->pool,
+            fn (array $item) => $item['process']->isRunning()
+        );
+        while (count($this->pool) < $this->poolSize) {
+            $this->pool[] = $this->createProcess();
+        }
     }
 }
