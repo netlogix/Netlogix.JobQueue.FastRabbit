@@ -8,11 +8,16 @@ use Flowpack\JobQueue\Common\Job\JobManager;
 use Flowpack\JobQueue\Common\Queue\Message;
 use Neos\Cache\Frontend\FrontendInterface;
 use Neos\Flow\Cli\ConsoleOutput;
+use React\EventLoop;
 use Symfony\Component\Process\InputStream;
 use Symfony\Component\Process\Process;
 use t3n\JobQueue\RabbitMQ\Queue\RabbitQueue;
 
 use function array_shift;
+use function fputs;
+
+use const STDERR;
+use const STDOUT;
 
 final class Worker
 {
@@ -60,7 +65,6 @@ final class Worker
                 '<success>Successfully executed job "%s"</success>',
                 [$message->getIdentifier()]
             );
-            $this->output->outputLine('Output: %s', [$process->getOutput()]);
         } else {
             $maximumNumberOfReleases = isset($this->queueSettings['maximumNumberOfReleases'])
                 ? (int) $this->queueSettings['maximumNumberOfReleases']
@@ -70,7 +74,6 @@ final class Worker
                 $releaseOptions = isset($this->queueSettings['releaseOptions']) ? $this->queueSettings['releaseOptions'] : [];
                 $this->queue->release($message->getIdentifier(), $releaseOptions);
                 $this->queue->reQueueMessage($message, $releaseOptions);
-                $this->output->outputLine('Output: %s', [$process->getOutput()]);
                 $this->output->outputLine(
                     '<error>Job execution for job (message: "%s", queue: "%s") failed (%d/%d trials) - RELEASE</error>',
                     [
@@ -82,7 +85,6 @@ final class Worker
                 );
             } else {
                 $this->queue->abort($message->getIdentifier());
-                $this->output->outputLine('Output: %s', [$process->getOutput()]);
                 $this->output->outputLine(
                     '<error>Job execution for job (message: "%s", queue: "%s") failed (%d/%d trials) - ABORTING</error>',
                     [
@@ -126,7 +128,22 @@ final class Worker
 
         $input->write($messageCacheIdentifier . PHP_EOL);
 
-        $process->wait();
+        $loop = EventLoop\Loop::get();
+        $loop->addPeriodicTimer(0.01, function (EventLoop\TimerInterface $timer) use ($process, $loop) {
+            try {
+                fputs(STDOUT, $process->getIncrementalOutput());
+                fputs(STDERR, $process->getIncrementalErrorOutput());
+            } catch (\Throwable $e) {
+            }
+
+            if (!$process->isRunning()) {
+                $loop->cancelTimer($timer);
+                $loop->stop();
+            }
+        });
+
+        $loop->run();
+
         return $process;
     }
 
