@@ -46,7 +46,7 @@ final class Worker
 
     public function prepare(): void
     {
-        $this->cleanPool();
+        $this->fillPool($this->poolSize);
 
         $this->output = new ConsoleOutput();
         $this->output->outputLine('Watching queue <b>"%s"</b>', [$this->queue->getName()]);
@@ -120,7 +120,7 @@ final class Worker
 
     private function runFromPool(string $messageCacheIdentifier): Process
     {
-        $this->cleanPool();
+        $this->fillPool($this->poolSize + 1); // Overfill
         $process = array_shift($this->pool);
         assert($process instanceof Process);
 
@@ -134,13 +134,14 @@ final class Worker
         return $process;
     }
 
-    private function cleanPool(): void
+    private function fillPool(int $poolSize): void
     {
+        $poolSize = max($poolSize, 0);
         $this->pool = array_filter(
             $this->pool,
             fn (Process $process) => $process->isRunning()
         );
-        while (count($this->pool) < $this->poolSize) {
+        while (count($this->pool) < $poolSize) {
             $this->pool[] = $this->createProcess();
         }
     }
