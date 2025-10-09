@@ -8,9 +8,8 @@ use Flowpack\JobQueue\Common\Job\JobManager;
 use Flowpack\JobQueue\Common\Queue\Message;
 use Neos\Cache\Frontend\FrontendInterface;
 use Neos\Flow\Cli\ConsoleOutput;
+use React\ChildProcess\Process;
 use React\EventLoop;
-use Symfony\Component\Process\InputStream;
-use Symfony\Component\Process\Process;
 use t3n\JobQueue\RabbitMQ\Queue\RabbitQueue;
 
 use function array_shift;
@@ -23,8 +22,10 @@ final class Worker
 {
     protected readonly ConsoleOutput $output;
 
+    private readonly EventLoop\LoopInterface $loop;
+
     /**
-     * @var array{input: InputStream, process: Process}[]
+     * @var Process[]
      */
     private array $pool = [];
 
@@ -40,6 +41,7 @@ final class Worker
         protected readonly FrontendInterface $messageCache,
         protected readonly Lock $lock
     ) {
+        $this->loop = EventLoop\Loop::get();
     }
 
     public function prepare(): void
@@ -102,47 +104,32 @@ final class Worker
         }
     }
 
-    /**
-     * @return array{input: InputStream, process: Process}
-     */
-    private function createProcess(): array
+    private function createProcess(): Process
     {
-        $input = new InputStream();
-        $process = Process::fromShellCommandline(
-            command: $this->command,
-            input: $input,
-            timeout: 0
-        );
-        $process->start();
-        return ['input' => $input, 'process' => $process];
+        $process = new Process($this->command);
+        $timer = $this->loop->addPeriodicTimer(0.01, function () {
+            // TODO: Add keepalive for database if necessary
+        });
+        $process->on('exit', function () use ($timer) {
+            $this->loop->cancelTimer($timer);
+            $this->loop->stop();
+        });
+        $process->start(loop: $this->loop, interval: 0.01);
+        return $process;
     }
 
     private function runFromPool(string $messageCacheIdentifier): Process
     {
         $this->cleanPool();
-        ['input' => $input, 'process' => $process] = array_shift($this->pool);
-        $this->pool[] = $this->createProcess();
-
-        assert($input instanceof InputStream);
+        $process = array_shift($this->pool);
         assert($process instanceof Process);
 
-        $input->write($messageCacheIdentifier . PHP_EOL);
+        $process->stdout->on('data', fn ($chunk) => fputs(STDOUT, $chunk));
+        $process->stderr->on('data', fn ($chunk) => fputs(STDERR, $chunk));
 
-        $loop = EventLoop\Loop::get();
-        $loop->addPeriodicTimer(0.01, function (EventLoop\TimerInterface $timer) use ($process, $loop) {
-            try {
-                fputs(STDOUT, $process->getIncrementalOutput());
-                fputs(STDERR, $process->getIncrementalErrorOutput());
-            } catch (\Throwable $e) {
-            }
+        $process->stdin->write($messageCacheIdentifier . PHP_EOL);
 
-            if (!$process->isRunning()) {
-                $loop->cancelTimer($timer);
-                $loop->stop();
-            }
-        });
-
-        $loop->run();
+        $this->loop->run();
 
         return $process;
     }
@@ -151,7 +138,7 @@ final class Worker
     {
         $this->pool = array_filter(
             $this->pool,
-            fn (array $item) => $item['process']->isRunning()
+            fn (Process $process) => $process->isRunning()
         );
         while (count($this->pool) < $this->poolSize) {
             $this->pool[] = $this->createProcess();
