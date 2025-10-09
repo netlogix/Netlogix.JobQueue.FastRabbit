@@ -2,17 +2,18 @@
 
 namespace Netlogix\JobQueue\FastRabbit\SingletonPreloading;
 
-use Neos\Flow\Core\Bootstrap;
+use Doctrine\DBAL\Connection;
+use Doctrine\ORM\EntityManagerInterface;
+use Neos\Cache\Frontend\VariableFrontend;
 use Neos\Flow\ObjectManagement\Configuration\Configuration;
 use Neos\Flow\ObjectManagement\ObjectManager;
 use Neos\Flow\ObjectManagement\ObjectManagerInterface;
 use Neos\Flow\Reflection\ReflectionService;
 use Neos\Flow\Annotations as Flow;
 use Throwable;
-
 use Traversable;
 
-use function array_filter;
+use function class_exists;
 use function is_a;
 
 /**
@@ -29,54 +30,125 @@ use function is_a;
  */
 class AllSingletonsPreloader implements SingletonsPreloader
 {
+    public const string CACHE = 'Netlogix.JobQueue.FakeQueue:SingletonPreloaderCache';
+
     #[Flow\InjectConfiguration(path: 'AllSingletonsPreloader.ignoreClassNames', package: 'Netlogix.JobQueue.FastRabbit')]
     protected array $ignoreClassNames = [];
 
-    public function __construct(
-        protected readonly ObjectManager $objectManager,
-        protected readonly ReflectionService $reflectionService
-    ) {
-    }
+    #[Flow\Inject(name: AllSingletonsPreloader::CACHE, lazy: false)]
+    protected VariableFrontend $cache;
+
+    #[Flow\Inject(lazy: false)]
+    protected ObjectManager $objectManager;
+
+    #[Flow\Inject(lazy: false)]
+    protected ReflectionService $reflectionService;
 
     public function collect(): void
     {
-        $objectManager = Bootstrap::$staticObjectManager;
-        foreach ($this->getSingletonClassNames($objectManager) as $className) {
-            try {
-                $objectManager->get($className);
-            } catch (Throwable $e) {
-                // ignore
-            }
+        foreach ($this->getClassList() as $className => $buildInstance) {
+            $this->preload(className: $className, buildInstance: $buildInstance);
         }
+        $this->pauseExpiringObjects();
     }
 
     /**
-     * @return Traversable<string>
+     * @return array<string, bool>
      */
-    public function getSingletonClassNames(ObjectManagerInterface $objectManager): Traversable
+    protected function getClassList(): array
     {
-        foreach (self::getSingletonClassNamesFromReflection($objectManager) as $className) {
-            foreach ($this->ignoreClassNames as $ignoredClassName) {
-                if (is_a($className, $ignoredClassName, true)) {
-                    continue;
-                }
-            }
-            yield $className;
+        if ($this->cache->has('classList')) {
+            return $this->cache->get('classList');
+        } else {
+            $list = [... $this->buildClassList()];
+            $this->cache->set('classList', $list);
+            return $list;
         }
     }
 
-    #[Flow\CompileStatic]
-    public static function getSingletonClassNamesFromReflection(ObjectManagerInterface $objectManager): array
+    protected function preload(string $className, bool $buildInstance): void
     {
-        return array_filter(
-            array: $objectManager->get(ReflectionService::class)->getAllClassNames(),
-            callback: static function ($className) use ($objectManager): bool {
-                try {
-                    return $objectManager->getScope($className) === Configuration::SCOPE_SINGLETON;
-                } catch (\Exception $e) {
-                    return false;
-                }
+        try {
+            $buildInstance
+                ? $this->objectManager->get($className)
+                : class_exists(class: $className, autoload: true);
+        } catch (Throwable) {
+            // ignore
+        }
+    }
+
+    protected function pauseExpiringObjects()
+    {
+        if ($this->objectManager->has(EntityManagerInterface::class)) {
+            $this->objectManager
+                ->get(EntityManagerInterface::class)
+                ->getConnection()
+                ->close();
+        }
+        if ($this->objectManager->has(Connection::class)) {
+            $this->objectManager
+                ->get(Connection::class)
+                ->close();
+        }
+        // TODO: There are other objects that might expire, for example ´
+    }
+
+    /**
+     * @return Traversable<string, bool>
+     */
+    protected function buildClassList(): Traversable
+    {
+        foreach (self::getSingletonClassNamesFromReflection($this->objectManager) as $className => $buildInstance) {
+            yield $className => $buildInstance && !$this->ignoreClassName($className);
+        }
+    }
+
+    protected function ignoreClassName(string $className): bool
+    {
+        foreach ($this->ignoreClassNames as $ignoredClassName) {
+            if (is_a($className, $ignoredClassName, true)) {
+                return true;
             }
-        );
+        }
+        return false;
+    }
+
+    /**
+     * @return array<string, bool>
+     */
+    #[Flow\CompileStatic]
+    final public static function getSingletonClassNamesFromReflection(ObjectManagerInterface $objectManager): array
+    {
+        $reflection = $objectManager->get(ReflectionService::class);
+        assert($reflection instanceof ReflectionService);
+        $classNames = [];
+        foreach ($reflection->getAllClassNames() as $className) {
+            try {
+                if ($objectManager->getScope($className) !== Configuration::SCOPE_SINGLETON) {
+                    /**
+                     * Only preload singletons
+                     */
+                    $classNames[$className] = false;
+                    continue;
+                }
+            } catch (\Exception $e) {
+                $classNames[$className] = false;
+                continue;
+            }
+
+            $constructParameters = $reflection->getMethodParameters($className, '__construct');
+            if (count($constructParameters)) {
+                /**
+                 * Skip preloading for classes with constructor arguments because they are
+                 * likely to depend on stateful objects that, in one way or other, expire,
+                 * like database connections.
+                 */
+                $classNames[$className] = false;
+            } else {
+                $classNames[$className] = true;
+            }
+        }
+
+        return $classNames;
     }
 }
