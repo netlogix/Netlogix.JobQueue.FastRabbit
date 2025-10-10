@@ -15,6 +15,8 @@ use t3n\JobQueue\RabbitMQ\Queue\RabbitQueue;
 use function array_shift;
 use function fputs;
 
+use function max;
+
 use const STDERR;
 use const STDOUT;
 
@@ -30,9 +32,11 @@ final class Worker
     private array $pool = [];
 
     /**
-     * A pool size of 1 means one standby while 1 is working.
+     * When a child process is assigned a task, the pool is restocked to this
+     * amount. So this is the number of idle processes at any time. The total
+     * number of processes can be higher if there are busy ones.
      */
-    protected int $poolSize = 1;
+    private readonly int $poolSize;
 
     public function __construct(
         protected readonly string $command,
@@ -42,6 +46,7 @@ final class Worker
         protected readonly Lock $lock
     ) {
         $this->loop = EventLoop\Loop::get();
+        $this->poolSize = max(0, (int) ($queueSettings['poolSize'] ?? 1));
     }
 
     public function prepare(): void
