@@ -49,6 +49,15 @@ final class Worker
         $this->poolSize = max(0, (int) ($queueSettings['poolSize'] ?? 1));
     }
 
+    public function shutdownObject()
+    {
+        foreach ($this->pool as $process) {
+            $process->terminate();
+            $process->stdin->close();
+        }
+        $this->pool = [];
+    }
+
     public function prepare(): void
     {
         $this->fillPool($this->poolSize);

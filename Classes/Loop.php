@@ -45,11 +45,14 @@ final class Loop
         do {
             try {
                 $message = $this->queue->waitAndReserve($this->timeout);
-                $worker->executeMessage($message);
+                if ($message) {
+                    $worker->executeMessage($message);
+                }
             } catch (AMQPTimeoutException $e) {
             }
 
             if ($this->exitAfterTimestamp !== null && time() >= $this->exitAfterTimestamp) {
+                $worker->shutdownObject();
                 break;
             }
         } while (true);
