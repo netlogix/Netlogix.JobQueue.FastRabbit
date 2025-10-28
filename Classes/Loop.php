@@ -1,60 +1,86 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Netlogix\JobQueue\FastRabbit;
 
 use Neos\Flow\Annotations as Flow;
+use Netlogix\JobQueue\Pool\Pool;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
 use t3n\JobQueue\RabbitMQ\Queue\RabbitQueue;
 
-/**
- * @Flow\Proxy(false)
- */
+use function count;
+use function max;
+
+#[Flow\Proxy(false)]
 final class Loop
 {
-    protected $queue;
+    public const int SIX_HOURS_IN_SECONDS = 21600;
 
-    /**
-     * Unix timestamp after which the Loop should exit
-     *
-     * @var int|null
-     */
-    protected $exitAfterTimestamp;
+    public function __construct(
+        /**
+         * The Queue to watch
+         */
+        protected RabbitQueue $queue,
 
-    /**
-     * Timeout in seconds when waiting for new messages
-     *
-     * @var int|null
-     */
-    protected $timeout;
+        protected readonly Pool $poolObject,
 
-    /**
-     * @param RabbitQueue $queue The Queue to watch
-     * @param int $exitAfter Time in seconds after which the loop should exit
-     */
-    public function __construct(RabbitQueue $queue, int $exitAfter = 0)
-    {
-        $this->queue = $queue;
-        $this->exitAfterTimestamp = $exitAfter > 0 ? time() + $exitAfter : null;
-        $this->timeout = $exitAfter > 0 ? $exitAfter : null;
+        /**
+         * Time in seconds after which the loop should exit
+         */
+        protected readonly ?int $exitAfter
+    ) {
     }
 
     public function runMessagesOnWorker(Worker $worker)
     {
-        $worker->prepare();
-        do {
-            try {
-                $message = $this->queue->waitAndReserve($this->timeout);
-                if ($message) {
-                    $worker->executeMessage($message);
-                }
-            } catch (AMQPTimeoutException $e) {
-            }
+        $this
+            ->poolObject
+            ->runLoop(function (Pool $pool) use ($worker) {
+                $worker->prepare();
 
-            if ($this->exitAfterTimestamp !== null && time() >= $this->exitAfterTimestamp) {
-                $worker->shutdownObject();
-                break;
+                $runDueJobs = $pool->eventLoop->addPeriodicTimer(
+                    interval: 0.01,
+                    callback: fn () => $this->runDueJob($pool, $worker)
+                );
+
+                if ($this->exitAfter) {
+                    $pool->eventLoop->addTimer(
+                        interval: max($this->exitAfter, 1),
+                        callback: function () use ($pool, $runDueJobs) {
+                            $pool->eventLoop->cancelTimer($runDueJobs);
+                            $checkForPoolToClear = $pool->eventLoop->addPeriodicTimer(
+                                interval: 1,
+                                callback: function () use ($pool, &$checkForPoolToClear) {
+                                    if (count($pool) === 0) {
+                                        $pool->eventLoop->cancelTimer($checkForPoolToClear);
+                                        $pool->eventLoop->stop();
+                                    }
+                                }
+                            );
+                        }
+                    );
+                }
+            });
+    }
+
+    private function runDueJob(Pool $pool, Worker $worker): void
+    {
+        /**
+         * No parallel execution of multiple messages here, create multiple
+         * fast rabbit instances connected instead.
+         * Counting the running instances in the pool only prevents the
+         * pool from spawning too many workers.
+         */
+        if (count($pool)) {
+            return;
+        }
+        try {
+            $message = $this->queue->waitAndReserve(10);
+            if ($message) {
+                $pool->eventLoop->futureTick(fn () => $worker->executeMessage($message));
             }
-        } while (true);
+        } catch (AMQPTimeoutException $e) {
+        }
     }
 }

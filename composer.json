@@ -11,6 +11,7 @@
     "require": {
         "ext-json": "*",
         "flowpack/jobqueue-common": "^3.0.0",
+        "netlogix/jobqueue-pool": "^1.0",
         "netlogix/supervisor": "^1.0",
         "php-amqplib/php-amqplib": "^2.11",
         "react/child-process": "^0.6",

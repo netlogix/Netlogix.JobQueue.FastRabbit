@@ -8,60 +8,28 @@ use Flowpack\JobQueue\Common\Job\JobManager;
 use Flowpack\JobQueue\Common\Queue\Message;
 use Neos\Cache\Frontend\FrontendInterface;
 use Neos\Flow\Cli\ConsoleOutput;
+use Netlogix\JobQueue\Pool\Pool;
 use React\ChildProcess\Process;
-use React\EventLoop;
 use t3n\JobQueue\RabbitMQ\Queue\RabbitQueue;
 
-use function array_shift;
-use function fputs;
-
-use function max;
-
-use const STDERR;
-use const STDOUT;
+use function sha1;
 
 final class Worker
 {
     protected readonly ConsoleOutput $output;
 
-    private readonly EventLoop\LoopInterface $loop;
-
-    /**
-     * @var Process[]
-     */
-    private array $pool = [];
-
-    /**
-     * When a child process is assigned a task, the pool is restocked to this
-     * amount. So this is the number of idle processes at any time. The total
-     * number of processes can be higher if there are busy ones.
-     */
-    private readonly int $poolSize;
-
     public function __construct(
         protected readonly string $command,
+        protected readonly Pool $poolObject,
         protected readonly RabbitQueue $queue,
         protected readonly array $queueSettings,
         protected readonly FrontendInterface $messageCache,
         protected readonly Lock $lock
     ) {
-        $this->loop = EventLoop\Loop::get();
-        $this->poolSize = max(0, (int) ($queueSettings['poolSize'] ?? 1));
-    }
-
-    public function shutdownObject()
-    {
-        foreach ($this->pool as $process) {
-            $process->terminate();
-            $process->stdin->close();
-        }
-        $this->pool = [];
     }
 
     public function prepare(): void
     {
-        $this->fillPool($this->poolSize);
-
         $this->output = new ConsoleOutput();
         $this->output->outputLine('Watching queue <b>"%s"</b>', [$this->queue->getName()]);
     }
@@ -72,16 +40,19 @@ final class Worker
         $this->messageCache->set($messageCacheIdentifier, $message);
 
         $process = $this->lock->run(
-            fn () => $this->runFromPool($messageCacheIdentifier)
+            fn () => $this->poolObject->runPayload(payload: $message->getPayload(), queueName: $this->queue->getName()),
         );
+        assert($process instanceof Process);
 
-        if ($process->getExitCode() === 0) {
+        $process->on(Pool::EVENT_SUCCESS, function () use ($message) {
             $this->queue->finish($message->getIdentifier());
             $this->output->outputLine(
                 '<success>Successfully executed job "%s"</success>',
                 [$message->getIdentifier()]
             );
-        } else {
+        });
+
+        $process->on(Pool::EVENT_ERROR, function () use ($message) {
             $maximumNumberOfReleases = isset($this->queueSettings['maximumNumberOfReleases'])
                 ? (int) $this->queueSettings['maximumNumberOfReleases']
                 : JobManager::DEFAULT_MAXIMUM_NUMBER_RELEASES;
@@ -111,52 +82,6 @@ final class Worker
                     ]
                 );
             }
-        }
-
-        if ($messageCacheIdentifier !== null) {
-            $this->messageCache->remove($messageCacheIdentifier);
-        }
-    }
-
-    private function createProcess(): Process
-    {
-        $process = new Process($this->command);
-        $timer = $this->loop->addPeriodicTimer(0.01, function () {
-            // TODO: Add keepalive for database if necessary
         });
-        $process->on('exit', function () use ($timer) {
-            $this->loop->cancelTimer($timer);
-            $this->loop->stop();
-        });
-        $process->start(loop: $this->loop, interval: 0.01);
-        return $process;
-    }
-
-    private function runFromPool(string $messageCacheIdentifier): Process
-    {
-        $this->fillPool($this->poolSize + 1); // Overfill
-        $process = array_shift($this->pool);
-        assert($process instanceof Process);
-
-        $process->stdout->on('data', fn ($chunk) => fputs(STDOUT, $chunk));
-        $process->stderr->on('data', fn ($chunk) => fputs(STDERR, $chunk));
-
-        $process->stdin->write($messageCacheIdentifier . PHP_EOL);
-
-        $this->loop->run();
-
-        return $process;
-    }
-
-    private function fillPool(int $poolSize): void
-    {
-        $poolSize = max($poolSize, 0);
-        $this->pool = array_filter(
-            $this->pool,
-            fn (Process $process) => $process->isRunning()
-        );
-        while (count($this->pool) < $poolSize) {
-            $this->pool[] = $this->createProcess();
-        }
     }
 }
