@@ -117,7 +117,7 @@ class AllSingletonsPreloader implements SingletonsPreloader
      * @return array<string, bool>
      */
     #[Flow\CompileStatic]
-    final public static function getSingletonClassNamesFromReflection(ObjectManagerInterface $objectManager): array
+    public static function getSingletonClassNamesFromReflection(ObjectManagerInterface $objectManager): array
     {
         $reflection = $objectManager->get(ReflectionService::class);
         assert($reflection instanceof ReflectionService);
