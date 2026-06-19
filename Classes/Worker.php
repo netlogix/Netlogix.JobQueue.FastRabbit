@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Netlogix\JobQueue\FastRabbit;
 
+use Closure;
 use Flowpack\JobQueue\Common\Job\JobManager;
 use Flowpack\JobQueue\Common\Queue\Message;
 use Neos\Cache\Frontend\FrontendInterface;
@@ -18,6 +19,12 @@ final class Worker
 {
     protected readonly ConsoleOutput $output;
 
+    /**
+     * Invoked after a job has finished (successfully or not) so the loop
+     * can pick up the next message without waiting for the next periodic poll.
+     */
+    private ?Closure $onJobFinished = null;
+
     public function __construct(
         protected readonly string $command,
         protected readonly Pool $poolObject,
@@ -26,6 +33,11 @@ final class Worker
         protected readonly FrontendInterface $messageCache,
         protected readonly Lock $lock
     ) {
+    }
+
+    public function onJobFinished(Closure $callback): void
+    {
+        $this->onJobFinished = $callback;
     }
 
     public function prepare(): void
@@ -46,6 +58,7 @@ final class Worker
 
         $process->on(Pool::EVENT_SUCCESS, function () use ($message) {
             $this->queue->finish($message->getIdentifier());
+            $this->notifyJobFinished();
             $this->output->outputLine(
                 '<success>Successfully executed job "%s"</success>',
                 [$message->getIdentifier()]
@@ -53,6 +66,7 @@ final class Worker
         });
 
         $process->on(Pool::EVENT_ERROR, function () use ($message) {
+            $this->notifyJobFinished();
             $maximumNumberOfReleases = isset($this->queueSettings['maximumNumberOfReleases'])
                 ? (int) $this->queueSettings['maximumNumberOfReleases']
                 : JobManager::DEFAULT_MAXIMUM_NUMBER_RELEASES;
@@ -83,5 +97,12 @@ final class Worker
                 );
             }
         });
+    }
+
+    private function notifyJobFinished(): void
+    {
+        if ($this->onJobFinished !== null) {
+            ($this->onJobFinished)();
+        }
     }
 }
