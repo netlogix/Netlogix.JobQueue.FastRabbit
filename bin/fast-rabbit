@@ -1,10 +1,12 @@
 #!/usr/bin/env php
 <?php
 
+use Neos\Cache\Frontend\VariableFrontend;
 use Netlogix\JobQueue\FastRabbit\Cache\CacheFactory;
 use Netlogix\JobQueue\FastRabbit\Lock;
 use Netlogix\JobQueue\FastRabbit\Loop;
 use Netlogix\JobQueue\FastRabbit\Worker;
+use Netlogix\JobQueue\Pool\Pool;
 use t3n\JobQueue\RabbitMQ\Queue\RabbitQueue;
 
 require_once __DIR__ . '/../src/autoload.php';
@@ -26,10 +28,22 @@ if (!is_a($queueClassName, RabbitQueue::class, true)) {
 }
 
 $queue = new $queueClassName($queueName, $queueOptions);
+assert($queue instanceof RabbitQueue);
 $messageCache = CacheFactory::get($config);
+assert($messageCache instanceof VariableFrontend);
 $lock = new Lock($config['workerPool']['numberOfWorkers'], $config['workerPool']['lockFileDirectory']);
 
-$worker = new Worker($command, $queue, $queueSettings, $messageCache, $lock);
-$loop = new Loop($queue, 21600);
+$pool = new Pool(
+    null,
+    false,
+    false,
+    max(0, (int) ($queueSettings['preforkSize'] ?? 1)),
+    $command,
+    \React\EventLoop\Loop::get()
+);
+$pool->injectMessageCache($messageCache);
+
+$worker = new Worker($command, $pool, $queue, $queueSettings, $messageCache, $lock);
+$loop = new Loop($queue, $pool, Loop::SIX_HOURS_IN_SECONDS);
 
 $loop->runMessagesOnWorker($worker);

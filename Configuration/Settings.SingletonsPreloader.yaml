@@ -1,0 +1,14 @@
+Netlogix:
+  JobQueue:
+    FastRabbit:
+
+      AllSingletonsPreloader:
+        ignoreClassNames:
+          # cannot be preloaded due to missing constructor arguments
+          Neos\Flow\ObjectManagement\CompileTimeObjectManager:                           Neos\Flow\ObjectManagement\CompileTimeObjectManager
+          Neos\Flow\Property\TypeConverter\AbstractTypeConverter:                        Neos\Flow\Property\TypeConverter\AbstractTypeConverter
+          Neos\Flow\Security\Authentication\Controller\AbstractAuthenticationController: Neos\Flow\Security\Authentication\Controller\AbstractAuthenticationController
+          Neos\Flow\Session\Aspect\SessionObjectMethodsPointcutFilter:                   Neos\Flow\Session\Aspect\SessionObjectMethodsPointcutFilter
+          # must not be preloaded because they hold connections that can expire
+          Doctrine\DBAL\Connection:                                                      Doctrine\DBAL\Connection
+          Doctrine\ORM\EntityManagerInterface:                                           Doctrine\ORM\EntityManagerInterface

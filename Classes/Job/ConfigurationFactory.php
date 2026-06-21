@@ -8,6 +8,8 @@ use Neos\Flow\Annotations as Flow;
 use Neos\Flow\Configuration\ConfigurationManager;
 use Neos\Flow\Core\Booting\Scripts;
 use Neos\Utility\ObjectAccess;
+use Netlogix\JobQueue\Pool\ProcessFactory;
+
 use function defined;
 use function preg_replace;
 use function rtrim;
@@ -59,16 +61,7 @@ class ConfigurationFactory
             ConfigurationManager::CONFIGURATION_TYPE_SETTINGS,
             'Neos.Flow'
         );
-
-        $command = Scripts::buildPhpCommand(
-            $flowSettings
-        );
-        $command .= sprintf(
-            ' %s %s --queue=%s',
-            escapeshellarg(\FLOW_PATH_FLOW . 'Scripts/flow.php'),
-            escapeshellarg('flowpack.jobqueue.common:job:execute'),
-            escapeshellarg($queueName)
-        );
+        $command = (new ProcessFactory)->buildSubprocessCommand();
 
         $workerPool = (array)$this->configurationManager->getConfiguration(
             ConfigurationManager::CONFIGURATION_TYPE_SETTINGS,

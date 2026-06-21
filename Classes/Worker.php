@@ -1,129 +1,108 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Netlogix\JobQueue\FastRabbit;
 
+use Closure;
 use Flowpack\JobQueue\Common\Job\JobManager;
 use Flowpack\JobQueue\Common\Queue\Message;
 use Neos\Cache\Frontend\FrontendInterface;
-use Neos\Flow\Annotations as Flow;
 use Neos\Flow\Cli\ConsoleOutput;
+use Netlogix\JobQueue\Pool\Pool;
+use React\ChildProcess\Process;
 use t3n\JobQueue\RabbitMQ\Queue\RabbitQueue;
 
-/**
- * @Flow\Proxy(false)
- */
+use function sha1;
+
 final class Worker
 {
-    /**
-     * @var string
-     */
-    protected $command;
+    protected readonly ConsoleOutput $output;
 
     /**
-     * @var RabbitQueue
+     * Invoked after a job has finished (successfully or not) so the loop
+     * can pick up the next message without waiting for the next periodic poll.
      */
-    protected $queue;
-
-    /**
-     * @var array
-     */
-    protected $queueSettings;
-
-    /**
-     * @var FrontendInterface
-     */
-    protected $messageCache;
-
-    /**
-     * @var ConsoleOutput
-     */
-    protected $output;
-
-    /**
-     * @var Lock
-     */
-    private $lock;
+    private ?Closure $onJobFinished = null;
 
     public function __construct(
-        string $command,
-        RabbitQueue $queue,
-        array $queueSettings,
-        FrontendInterface $messageCache,
-        Lock $lock
+        protected readonly string $command,
+        protected readonly Pool $poolObject,
+        protected readonly RabbitQueue $queue,
+        protected readonly array $queueSettings,
+        protected readonly FrontendInterface $messageCache,
+        protected readonly Lock $lock
     ) {
-        $this->command = $command;
-        $this->queue = $queue;
-        $this->queueSettings = $queueSettings;
-        $this->messageCache = $messageCache;
-        $this->lock = $lock;
     }
 
-    public function prepare()
+    public function onJobFinished(Closure $callback): void
+    {
+        $this->onJobFinished = $callback;
+    }
+
+    public function prepare(): void
     {
         $this->output = new ConsoleOutput();
-        $this->outputLine('Watching queue <b>"%s"</b>', $this->queue->getName());
+        $this->output->outputLine('Watching queue <b>"%s"</b>', [$this->queue->getName()]);
     }
 
-    public function executeMessage(Message $message)
+    public function executeMessage(Message $message): void
     {
         $messageCacheIdentifier = sha1(serialize($message));
         $this->messageCache->set($messageCacheIdentifier, $message);
 
-        $this->lock->run(function() use (&$messageCacheIdentifier, &$commandOutput, &$result) {
-            exec(
-                $this->command . ' --messageCacheIdentifier=' . escapeshellarg($messageCacheIdentifier),
-                $commandOutput,
-                $result
+        $process = $this->lock->run(
+            fn () => $this->poolObject->runPayload(payload: $message->getPayload(), queueName: $this->queue->getName()),
+        );
+        assert($process instanceof Process);
+
+        $process->on(Pool::EVENT_SUCCESS, function () use ($message) {
+            $this->queue->finish($message->getIdentifier());
+            $this->notifyJobFinished();
+            $this->output->outputLine(
+                '<success>Successfully executed job "%s"</success>',
+                [$message->getIdentifier()]
             );
         });
 
-        if ($result === 0) {
-            $this->queue->finish($message->getIdentifier());
-            $this->outputLine(
-                '<success>Successfully executed job "%s" (%s)</success>',
-                $message->getIdentifier(),
-                join('', $commandOutput)
-            );
-
-        } else {
+        $process->on(Pool::EVENT_ERROR, function () use ($message) {
+            $this->notifyJobFinished();
             $maximumNumberOfReleases = isset($this->queueSettings['maximumNumberOfReleases'])
-                ? (int)$this->queueSettings['maximumNumberOfReleases']
+                ? (int) $this->queueSettings['maximumNumberOfReleases']
                 : JobManager::DEFAULT_MAXIMUM_NUMBER_RELEASES;
 
             if ($message->getNumberOfReleases() < $maximumNumberOfReleases) {
                 $releaseOptions = isset($this->queueSettings['releaseOptions']) ? $this->queueSettings['releaseOptions'] : [];
                 $this->queue->release($message->getIdentifier(), $releaseOptions);
                 $this->queue->reQueueMessage($message, $releaseOptions);
-                $this->outputLine(
-                    'Job execution for job (message: "%s", queue: "%s") failed (%d/%d trials) - RELEASE',
-                    $message->getIdentifier(),
-                    $this->queue->getName(),
-                    $message->getNumberOfReleases() + 1,
-                    $maximumNumberOfReleases + 1
+                $this->output->outputLine(
+                    '<error>Job execution for job (message: "%s", queue: "%s") failed (%d/%d trials) - RELEASE</error>',
+                    [
+                        $message->getIdentifier(),
+                        $this->queue->getName(),
+                        $message->getNumberOfReleases() + 1,
+                        $maximumNumberOfReleases + 1,
+                    ]
                 );
-                $this->outputLine('<error>Message: %s</error>', join('', $commandOutput));
-
             } else {
                 $this->queue->abort($message->getIdentifier());
-                $this->outputLine(
-                    'Job execution for job (message: "%s", queue: "%s") failed (%d/%d trials) - ABORTING',
-                    $message->getIdentifier(),
-                    $this->queue->getName(),
-                    $message->getNumberOfReleases() + 1,
-                    $maximumNumberOfReleases + 1
+                $this->output->outputLine(
+                    '<error>Job execution for job (message: "%s", queue: "%s") failed (%d/%d trials) - ABORTING</error>',
+                    [
+                        $message->getIdentifier(),
+                        $this->queue->getName(),
+                        $message->getNumberOfReleases() + 1,
+                        $maximumNumberOfReleases + 1,
+                    ]
                 );
-                $this->outputLine('<error>Message: %s</error>', join('', $commandOutput));
             }
-        }
-
-        if ($messageCacheIdentifier !== null) {
-            $this->messageCache->remove($messageCacheIdentifier);
-        }
+        });
     }
 
-    protected function outputLine(string $text, ...$arguments)
+    private function notifyJobFinished(): void
     {
-        $this->output->outputLine($text, $arguments);
+        if ($this->onJobFinished !== null) {
+            ($this->onJobFinished)();
+        }
     }
 }

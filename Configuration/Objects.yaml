@@ -1,0 +1,28 @@
+'Netlogix\JobQueue\FastRabbit\SingletonPreloading\SingletonsPreloader':
+
+  # Don't create any singleton instances by default. This cautious setting completely
+  # avoids creating "expiring" singleton instances, like doctrine DBAL connections,
+  # during the preloading phase.
+
+  className: Netlogix\JobQueue\FastRabbit\SingletonPreloading\NoneSingletonsPreloader
+
+
+  # Create "all" singletons. Those with constructor argument injection are excluded
+  # to avoid the before-mentioned Doctrine DBAL, which comes through the EntityManager.
+  #
+  # As soon as injected properties are "lazy: false", which needs to be the case
+  # for properly typed ones and which usually comes when switching from doc comments
+  # to PHP 8 attributes, the loader can't easily decide which singleton depends on
+  # an "expiring" object, so the "all" preloader might silently load doctrine DBAL.
+  #
+  # className: Netlogix\JobQueue\FastRabbit\SingletonPreloading\AllSingletonsPreloader
+
+
+'Netlogix.JobQueue.FakeQueue:SingletonPreloaderCache':
+  className:         Neos\Cache\Frontend\VariableFrontend
+  scope:             singleton
+  factoryObjectName: Neos\Flow\Cache\CacheManager
+  factoryMethodName: getCache
+  arguments:
+    1:
+      value: Netlogix_JobQueue_FastRabbit_SingletonPreloaderCache
