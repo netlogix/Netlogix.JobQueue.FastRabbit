@@ -26,6 +26,12 @@ class ConfigurationFactory
     protected $applicationName;
 
     /**
+     * @var string|null
+     * @Flow\InjectConfiguration(package="Netlogix.Supervisor", path="configurationPath")
+     */
+    protected $supervisorConfigurationPath;
+
+    /**
      * @var QueueManager
      */
     protected $queueManager;
@@ -110,7 +116,8 @@ class ConfigurationFactory
     {
         assert(defined('FLOW_PATH_CONFIGURATION'));
         $jobName = $this->getJobName($queueName);
-        $pathPrefix = rtrim(FLOW_PATH_CONFIGURATION, '/') . '/Supervisor/';
+        // Same directory Netlogix.Supervisor writes the program files to
+        $pathPrefix = rtrim($this->supervisorConfigurationPath ?: FLOW_PATH_CONFIGURATION . 'Supervisor/', '/') . '/';
         return sprintf($pathPrefix . 'program-%s.%s', $jobName, $suffix);
     }
 
